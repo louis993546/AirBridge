@@ -8,12 +8,14 @@ mod ipp_usb;
 mod mdns;
 mod scan_cal;
 mod usb_host;
+mod wifi;
 
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::http::server::{Configuration as HttpConfig, EspHttpServer};
 use esp_idf_svc::http::Method;
 use esp_idf_svc::io::Write;
@@ -25,6 +27,7 @@ use crate::escl::EsclState;
 use crate::eth::P4Ethernet;
 use crate::ipp_usb::IppUsbBridge;
 use crate::scan_cal::{ScanCalStore, ScanCalibration};
+use crate::wifi::{P4Wifi, WifiState};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Necessary ESP-IDF runtime glue & USB-Serial/JTAG logger
@@ -37,12 +40,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("========================================");
 
     // 2. Core ESP-IDF services + persistent scan calibration store in NVS
+    let peripherals = Peripherals::take()?;
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs = EspDefaultNvsPartition::take()?;
-    let scan_cal = Arc::new(ScanCalStore::new(nvs));
+    let scan_cal = Arc::new(ScanCalStore::new(nvs.clone()));
 
-    // 3. Bring up 100M Ethernet (non-blocking if RJ45 isn't plugged in yet)
+    // 3. Bring up 100M Ethernet (non-blocking if RJ45 isn't plugged in)
     let ethernet = P4Ethernet::start(&sys_loop)?;
+
+    // 3a. Bring up Wi-Fi 6 (WPA3) via onboard ESP32-C6 over SDIO if WIFI_SSID is configured
+    let wifi_handle: Option<P4Wifi> = if !config::WIFI_SSID.is_empty() {
+        match P4Wifi::start(peripherals.modem, sys_loop.clone(), nvs) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                log::error!("[WiFi] Failed to start onboard C6 Wi-Fi: {:?}", e);
+                None
+            }
+        }
+    } else {
+        info!("[WiFi] WIFI_SSID empty in cfg.toml — Ethernet-only mode");
+        None
+    };
+    let wifi_state: Arc<std::sync::Mutex<WifiState>> = wifi_handle
+        .as_ref()
+        .map(|w| w.state.clone())
+        .unwrap_or_else(|| Arc::new(std::sync::Mutex::new(WifiState::default())));
 
     // 3b. Bring up High-Speed USB 2.0 Host + IPP-USB bridge (with CH334F Hub support)
     let ipp_usb = Arc::new(IppUsbBridge::new());
@@ -72,16 +94,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Status & Scan Calibration dashboard at http://p4-airbridge.local/
     {
         let net_state = ethernet.state.clone();
+        let wifi_st = wifi_state.clone();
         let usb = usb_state.clone();
         let ipp_usb_ref = ipp_usb.clone();
         let cal_ref = scan_cal.clone();
         http_server.fn_handler("/", Method::Get, move |req| {
-            let ip_str = net_state
+            let eth_ip = net_state
                 .lock()
                 .unwrap()
                 .ip
                 .map(|ip| ip.to_string())
-                .unwrap_or_else(|| "Pending DHCP".to_string());
+                .unwrap_or_else(|| "Unplugged".to_string());
+            let wifi_ip = wifi_st
+                .lock()
+                .unwrap()
+                .ip
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| {
+                    if config::WIFI_SSID.is_empty() {
+                        "Disabled".to_string()
+                    } else {
+                        "Connecting...".to_string()
+                    }
+                });
+            let primary_ip = net_state
+                .lock()
+                .unwrap()
+                .ip
+                .or_else(|| wifi_st.lock().unwrap().ip)
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| format!("{}.local", config::MDNS_HOSTNAME));
+            let ip_str = format!("Ethernet: {} | Wi-Fi: {}", eth_ip, wifi_ip);
             let usb_text = usb.lock().unwrap().summary_text();
             let cal = cal_ref.get();
             let uptime_s = boot_instant.elapsed().as_secs();
@@ -183,13 +226,14 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
     <li>USB Inspector (text): <a href="/usb"><code>/usb</code></a></li>
     <li>AirScan Capabilities: <a href="/eSCL/ScannerCapabilities"><code>/eSCL/ScannerCapabilities</code></a></li>
     <li>AirScan Status: <a href="/eSCL/ScannerStatus"><code>/eSCL/ScannerStatus</code></a></li>
-    <li>AirPrint IPP: <code>ipp://{ip}:631/ipp/print</code></li>
+    <li>AirPrint IPP: <code>ipp://{primary_ip}:631/ipp/print</code></li>
   </ul>
   <p><a class="btn danger" href="/reboot" onclick="return confirm('Reboot ESP32-P4 AirBridge?')">Reboot ESP32-P4</a></p>
 </body>
 </html>"#,
                 mode = mode_str,
                 ip = ip_str,
+                primary_ip = primary_ip,
                 uptime = uptime_str,
                 ram_kb = free_internal_kb,
                 psram_kb = free_psram_kb,

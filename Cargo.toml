@@ -32,3 +32,10 @@ embuild = "0.33.5"
 # Pull in the official Espressif mDNS component (moved out of core IDF in v5.x)
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/mdns", version = "~1.8.2" }
+
+# Onboard ESP32-C6 Wi-Fi 6 (WPA3) over SDIO via ESP-Hosted + esp_wifi_remote
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_wifi_remote", version = ">=0.10,<2.0" }
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp_hosted", version = "~2" }

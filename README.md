@@ -122,17 +122,12 @@ Once connected to Ethernet, open **`http://p4-airbridge.local/`** (or the DHCP I
 3. **Flash & PSRAM (`sdkconfig.defaults`):** Adjust `CONFIG_ESPTOOLPY_FLASHSIZE_*` and `CONFIG_SPIRAM_*` if your board has different flash/PSRAM sizes.
 4. **USB Host without an onboard hub:** `CONFIG_USB_HOST_HUBS_SUPPORTED=y` is harmless even if your board wires USB-A directly to the P4 without a CH334F hub, though you can disable it to save a few KB of flash. If your board has a GPIO-controlled VBUS 5V load switch, drive that GPIO high before calling `usb_host::start_usb_host()`.
 
-### 4. Switching from Ethernet to Wi-Fi (via Onboard ESP32-C6)
-ESP32-P4 has no built-in Wi-Fi radio; on the Waveshare P4-Module-DEV-KIT, Wi-Fi 6 lives on the on-module **ESP32-C6** connected over **SDIO**.
+### 4. Using Wi-Fi 6 (WPA3) vs. Ethernet
+Both **100M Ethernet** and **Wi-Fi 6 (WPA3-Personal via onboard ESP32-C6 over SDIO)** are built in and can run simultaneously or independently:
 
-To switch from Ethernet to Wi-Fi:
-1. Add the Espressif hosted Wi-Fi components to `Cargo.toml` under `[[package.metadata.esp-idf-sys.extra_components]]`:
-   - `espressif/esp_wifi_remote`
-   - `espressif/esp_hosted` (configured in `sdkconfig.defaults` with the Waveshare P4↔C6 SDIO pins & C6 reset pin).
-2. Add `WIFI_SSID` and `WIFI_PASS` to `cfg.toml` (gitignored) and load them via `src/config.rs`.
-3. Replace `P4Ethernet::start(&sys_loop)` in `src/main.rs` with `BlockingWifi::wrap(EspWifi::new(...))` (see the sibling `hello-new-world/src/main.rs` for EU channel 1–13 & WPA3-SAE setup).
-4. Ensure the onboard ESP32-C6 is running matching `esp-hosted` slave firmware (Waveshare ships it pre-flashed; re-flash via the C6 UART header if ESP-IDF complains of a version mismatch).
-5. Everything above Layer 3 (`mdns.rs`, `escl.rs`, `ipp_server.rs`, `ipp_usb.rs`, `usb_host.rs`, `scan_cal.rs`) stays **100% unchanged**.
+- **Wi-Fi 6 (WPA3):** Set `WIFI_SSID`, `WIFI_PASS`, and `WIFI_COUNTRY` (default `"EU"`, channels 1–13) in `cfg.toml` (gitignored) and flash. `src/wifi.rs` uses `espressif/esp_wifi_remote` + `espressif/esp_hosted` over the Waveshare P4-Module's default SDIO pins (`CLK=18, CMD=19, D0..D3=14..17, RST=54`), disables Wi-Fi power-save (`WIFI_PS_NONE`) for low-latency mDNS/AirScan/AirPrint, and automatically reconnects if the router reboots.
+- **Ethernet-only:** Leave `WIFI_SSID = ""` in `cfg.toml` — the onboard C6 stays idle and only the RJ45 port is used.
+- **Both enabled:** Plug or unplug Ethernet at any time; `http://p4-airbridge.local/` displays both the Ethernet IP and Wi-Fi IP live.
 
 ---
 

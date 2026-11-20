@@ -50,3 +50,18 @@ pub const SCANNER_CS: &str = match option_env!("AIRBRIDGE_SCANNER_CS") {
     Some(v) => v,
     None => "color,grayscale,binary",
 };
+
+pub const WIFI_SSID: &str = match option_env!("AIRBRIDGE_WIFI_SSID") {
+    Some(v) => v,
+    None => "",
+};
+
+pub const WIFI_PASS: &str = match option_env!("AIRBRIDGE_WIFI_PASS") {
+    Some(v) => v,
+    None => "",
+};
+
+pub const WIFI_COUNTRY: &str = match option_env!("AIRBRIDGE_WIFI_COUNTRY") {
+    Some(v) => v,
+    None => "EU",
+};

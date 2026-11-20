@@ -16,3 +16,9 @@ PRINTER_PDL = "application/octet-stream,image/pwg-raster,image/urf,image/jpeg"
 PRINTER_URF = "W8,SRGB24,RS300-600,DM1,PQ4"
 SCANNER_PDL = "application/pdf,image/jpeg"
 SCANNER_CS = "color,grayscale,binary"
+
+# Optional Wi-Fi 6 (WPA3) via onboard ESP32-C6 over SDIO.
+# Leave empty to use Ethernet only; if set, Wi-Fi connects automatically (Ethernet remains active too).
+WIFI_SSID = ""
+WIFI_PASS = ""
+WIFI_COUNTRY = "EU"
