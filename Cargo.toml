@@ -1,0 +1,34 @@
+[package]
+name = "p4-airbridge"
+version = "0.1.0"
+authors = ["Louis <louis993546@gmail.com>"]
+edition = "2021"
+resolver = "2"
+rust-version = "1.82"
+
+[[bin]]
+name = "p4-airbridge"
+harness = false # do not use the built-in cargo test harness -> resolve rust-analyzer errors
+
+[profile.release]
+opt-level = "s"
+
+[profile.dev]
+debug = true    # Symbols are nice, and they don't increase the size on Flash
+opt-level = "z"
+
+[patch.crates-io]
+esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf.git" }
+esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf.git" }
+esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf.git" }
+
+[dependencies]
+log = "0.4"
+esp-idf-svc = { version = "0.53", features = ["critical-section"] }
+
+[build-dependencies]
+embuild = "0.33.5"
+
+# Pull in the official Espressif mDNS component (moved out of core IDF in v5.x)
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "~1.8.2" }

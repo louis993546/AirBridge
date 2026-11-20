@@ -1,0 +1,18 @@
+# Optional local device configuration (copy to `cfg.toml`; gitignored).
+# If `cfg.toml` is not present, generic placeholders are used so the project still builds out of the box.
+#
+# Tip: To discover your real IPP-USB printer's UUID, URF, and PDL values, flash once with defaults,
+# plug in the printer, and run on macOS:
+#   ipptool -tv ipp://<p4-ip>:631/ipp/print /usr/share/cups/ipptool/get-printer-attributes.test \
+#     | grep -E "printer-uuid|printer-make-and-model|document-format-supported|urf-supported"
+
+MDNS_HOSTNAME = "p4-airbridge"
+PRINTER_NAME = "P4 AirBridge Printer"
+PRINTER_MODEL = "Generic IPP-USB MFP"
+PRINTER_PRODUCT = "(Generic IPP-USB MFP)"
+PRINTER_SERIAL = "P4-AIRBRIDGE-001"
+PRINTER_UUID = "00000000-0000-4000-8000-000000000001"
+PRINTER_PDL = "application/octet-stream,image/pwg-raster,image/urf,image/jpeg"
+PRINTER_URF = "W8,SRGB24,RS300-600,DM1,PQ4"
+SCANNER_PDL = "application/pdf,image/jpeg"
+SCANNER_CS = "color,grayscale,binary"

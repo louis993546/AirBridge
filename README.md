@@ -1,0 +1,164 @@
+# p4-airbridge — ESP32-P4 AirScan & AirPrint USB-to-Ethernet Bridge
+
+Turn a USB-only (or legacy WPA2-only Wi-Fi) multifunction printer/scanner into a rock-solid **driverless AirScan (eSCL) & AirPrint (IPP/2.0)** network device over **100M Ethernet**, using an **ESP32-P4** microcontroller in Rust (`esp-idf-svc`).
+
+### Why?
+Many otherwise great printers/scanners (like Epson EcoTank models) only support WPA2 Wi-Fi and will likely never receive WPA3 firmware updates. Rather than downgrading a **WPA3-only** home network to WPA2/WPA3 transitional mode or maintaining a separate legacy IoT SSID, this bridge turns off the printer's Wi-Fi completely and puts an ESP32-P4 between the printer's USB port and your router over **100M Ethernet** (or optionally WPA3 Wi-Fi 6 via the onboard ESP32-C6) — keeping native macOS/iOS **AirScan** and **AirPrint** working with zero drivers.
+
+```text
+  macOS / iOS (Image Capture, Preview, AirPrint)
+        │
+        │  100M Ethernet + mDNS (_uscan._tcp, _ipp._tcp + _universal)
+        │  HTTP Port 80  -> Web UI + Calibration + AirScan (/eSCL/*)
+        │  HTTP Port 631 -> AirPrint (/ipp/print, chunked + 100-continue)
+        ▼
+  ┌───────────────────────────────────────────────┐
+  │           ESP32-P4 (p4-airbridge)             │
+  │  • Internal EMAC + IP101GRI RMII PHY          │
+  │  • Pure-Rust HTTP/1.1 IPP/2.0 Proxy + Fixer   │
+  │  • eSCL Proxy + Hardware Tone Calibration     │
+  │  • 4-Channel High-Speed USB 2.0 IPP-USB Pool  │
+  └───────────────────────────────────────────────┘
+        │
+        │  USB 2.0 High-Speed (480 Mbps) — IPP-USB (Class 07/01/04)
+        ▼
+   USB Multifunction Printer / Scanner (e.g., Epson EcoTank)
+```
+
+---
+
+## Features
+
+- **Native AirScan (eSCL):** Works driverless with macOS **Image Capture**, **Preview**, and Linux/Windows eSCL clients.
+- **Native AirPrint (IPP/2.0):** Works driverless with macOS & iOS Print dialogs (registers `_ipp._tcp` + `_universal._sub._ipp._tcp`), streaming print jobs directly from Ethernet to High-Speed USB 2.0.
+- **Epson IPP-USB Firmware Workaround:** Automatically repairs malformed `http://localhost<garbage>/...` URIs emitted by Epson EcoTank IPP-USB firmware that otherwise cause macOS `ipp2ppd` / CUPS to reject the printer.
+- **Hardware eSCL Scan Calibration + Web UI:** Visit `http://p4-airbridge.local/` to tune Brightness, Contrast, Sharpen, and JPEG Quality (`CompressionFactor = 1`) inside the scanner's own 16-bit sensor pipeline — persisted in ESP32-P4 NVS across reboots.
+- **24/7 Headless Operation:** Non-blocking USB-Serial/JTAG console (runs cleanly on a plain 5V USB wall charger), automatic USB disconnect/reconnect recovery when the printer sleeps or power-cycles, stale-channel drain on canceled scans, and a remote **Reboot** button on the Web UI.
+
+---
+
+## Hardware Setup (Waveshare ESP32-P4-Module-DEV-KIT)
+
+Tested on **Waveshare ESP32-P4-Module-DEV-KIT** (`ESP32-P4NRW32` rev v3.2, 16 MB Flash, 32 MB Hex PSRAM, IP101GRI 100M Ethernet PHY, onboard CH334F 4-port USB 2.0 Hub):
+
+1. **Power / Flashing:** Plug USB-C into the **native USB-Serial/JTAG** port (appears as `/dev/cu.usbmodem*` on macOS). Once flashed, plug this same USB-C port into any standard **5V USB wall charger** for headless operation.
+2. **Ethernet:** Plug RJ45 into your router or switch (DHCP is automatic).
+3. **USB Printer:** Set the board's **3-pin USB OTG jumper** to **HOST** mode (connects ESP32-P4 USB 2.0 HS to the onboard **CH334F** hub driving the USB-A ports), and plug your printer into a USB-A port.
+   - *Tip:* If a printer doesn't appear on `http://p4-airbridge.local/usb`, try the other USB-A sockets or check the 3-pin HOST/DEVICE jumper (on the Waveshare carrier board, 3 USB-A ports go through the CH334F hub and 1 port is wired to the direct bypass side of the `FSUSB42UMX` mux).
+
+---
+
+## Building & Flashing
+
+### Prerequisites
+- Rust toolchain (`stable` with `rust-src` component — configured in `rust-toolchain.toml`)
+- `espflash` (`cargo install espflash`) and `ldproxy` (`cargo install ldproxy`)
+
+### 1. Optional Local Device Config (`cfg.toml`)
+Copy `cfg.toml.example` to `cfg.toml` (gitignored) to customize your mDNS hostname, printer name, UUID, and URF/PDL records:
+
+```bash
+cp cfg.toml.example cfg.toml
+```
+
+If you skip this step, the firmware still builds cleanly with generic placeholders.
+
+### 2. Build & Flash
+
+> **Note on `RUSTC_BOOTSTRAP=1`:** Because `-Z build-std` is used for `riscv32imafc-esp-espidf` while staying on `stable` Rust (avoiding a `nightly` `libc 0.2.191` `st_mtim` breakage on `target_os = "espidf"`), prefix Cargo commands with `RUSTC_BOOTSTRAP=1`.
+
+```bash
+RUSTC_BOOTSTRAP=1 cargo run --release
+```
+
+If you already have ESP-IDF `v5.5.3` + RISC-V tools installed elsewhere (for example in a sibling repo's `.embuild/espressif`), reuse it without re-downloading ~5 GB:
+
+```bash
+ESP_IDF_TOOLS_INSTALL_DIR="custom:../hello-new-world/.embuild/espressif" \
+  RUSTC_BOOTSTRAP=1 cargo run --release
+```
+
+---
+
+## Web UI & Scan Calibration
+
+Once connected to Ethernet, open **`http://p4-airbridge.local/`** (or the DHCP IP shown in your router):
+
+- **Status:** Shows live IPP-USB bridge status, IP address, uptime, free internal SRAM & 32 MB PSRAM, and full USB descriptor tree (`/usb`).
+- **Scan Calibration:** Injects `<scan:Brightness>`, `<scan:Contrast>`, `<scan:Sharpen>`, and `<scan:CompressionFactor>` into `POST /eSCL/ScanJobs` whenever the client (e.g. macOS Image Capture with Image Correction = None) does not supply its own values.
+  - Default **Balanced (`-8 / +30`, Sharpen `2`, Quality `1`)** removes the Epson CIS sensor's milky shadow floor without clipping highlights or shifting yellow toward amber.
+  - Presets: **Balanced (`-8/+30`)**, **Soft (`-10/+16`)**, **Vivid (`-18/+24`)**, **Document Crisp (`-10/+40`)**, **Raw Epson (Off)**.
+  - Saved in ESP32-P4 NVS (survives reboots).
+- **Remote Reboot:** Click **Reboot ESP32-P4** (`/reboot`) to restart remotely without unplugging power.
+
+---
+
+## Future Maintenance & Migration Guides
+
+### 1. Switching Routers or Subnets
+- **No code changes or reflashing required.** Ethernet uses DHCP (`esp_netif` default client) and advertises via mDNS (`p4-airbridge.local`).
+- After plugging into a new router, give it ~5–10 seconds to obtain a new DHCP lease.
+- If macOS still caches the old IP or printer name, flush Bonjour cache on your Mac:
+  ```bash
+  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder
+  ```
+- Optional: assign a **DHCP reservation** in your router for the ESP32-P4's MAC address so the IP never changes.
+
+### 2. Switching to a Different USB Printer / Scanner
+1. Plug the new printer into the ESP32-P4's USB-A port and open **`http://p4-airbridge.local/usb`**.
+2. Check **`Capabilities -> IPP-USB: true`** (looks for USB interfaces with `class=07/01/04`).
+   - **If `IPP-USB: true`:** Scanning and printing will work immediately! For the cleanest macOS AirPrint/AirScan integration (linking Print + Scan into a single Multifunction device and matching exact print DPIs), query its real attributes once:
+     ```bash
+     /usr/bin/ipptool -tv ipp://p4-airbridge.local:631/ipp/print \
+       /usr/share/cups/ipptool/get-printer-attributes.test \
+       | grep -E "printer-uuid|printer-make-and-model|document-format-supported|urf-supported"
+     ```
+     Update `PRINTER_NAME`, `PRINTER_MODEL`, `PRINTER_UUID`, `PRINTER_PDL`, and `PRINTER_URF` in `cfg.toml` and reflash.
+   - **If `IPP-USB: false`** (older printer with only `07/01/02` Printer Class and `FF/*/*` Vendor Scanner): IPP-USB proxying won't apply; you would implement `ScannerBackend` / `PrinterBackend` in `src/backend.rs` using bulk USB transfers for that vendor's protocol (e.g., Epson ESC/I, Canon Pixma, HP LEDM).
+
+### 3. Porting to a Different ESP32-P4 Dev Board
+1. **Ethernet RMII Pins (`src/eth.rs`):** Update the GPIO constants in `waveshare_p4_pins` (`MDC`, `MDIO`, `REF_CLK`, `TX_EN`, `TXD0`, `TXD1`, `CRS_DV`, `RXD0`, `RXD1`, `PHY_RST`).
+2. **Ethernet PHY Chip (`src/eth.rs`):** Currently uses `esp_eth_phy_new_ip101` (for IP101GRI). Swap to `esp_eth_phy_new_lan87xx`, `esp_eth_phy_new_rtl8201`, `esp_eth_phy_new_dp83848`, or `esp_eth_phy_new_generic` to match your board's PHY.
+3. **Flash & PSRAM (`sdkconfig.defaults`):** Adjust `CONFIG_ESPTOOLPY_FLASHSIZE_*` and `CONFIG_SPIRAM_*` if your board has different flash/PSRAM sizes.
+4. **USB Host without an onboard hub:** `CONFIG_USB_HOST_HUBS_SUPPORTED=y` is harmless even if your board wires USB-A directly to the P4 without a CH334F hub, though you can disable it to save a few KB of flash. If your board has a GPIO-controlled VBUS 5V load switch, drive that GPIO high before calling `usb_host::start_usb_host()`.
+
+### 4. Switching from Ethernet to Wi-Fi (via Onboard ESP32-C6)
+ESP32-P4 has no built-in Wi-Fi radio; on the Waveshare P4-Module-DEV-KIT, Wi-Fi 6 lives on the on-module **ESP32-C6** connected over **SDIO**.
+
+To switch from Ethernet to Wi-Fi:
+1. Add the Espressif hosted Wi-Fi components to `Cargo.toml` under `[[package.metadata.esp-idf-sys.extra_components]]`:
+   - `espressif/esp_wifi_remote`
+   - `espressif/esp_hosted` (configured in `sdkconfig.defaults` with the Waveshare P4↔C6 SDIO pins & C6 reset pin).
+2. Add `WIFI_SSID` and `WIFI_PASS` to `cfg.toml` (gitignored) and load them via `src/config.rs`.
+3. Replace `P4Ethernet::start(&sys_loop)` in `src/main.rs` with `BlockingWifi::wrap(EspWifi::new(...))` (see the sibling `hello-new-world/src/main.rs` for EU channel 1–13 & WPA3-SAE setup).
+4. Ensure the onboard ESP32-C6 is running matching `esp-hosted` slave firmware (Waveshare ships it pre-flashed; re-flash via the C6 UART header if ESP-IDF complains of a version mismatch).
+5. Everything above Layer 3 (`mdns.rs`, `escl.rs`, `ipp_server.rs`, `ipp_usb.rs`, `usb_host.rs`, `scan_cal.rs`) stays **100% unchanged**.
+
+---
+
+## Project Layout
+
+```text
+p4-airbridge/
+├── Cargo.toml              # Dependencies & espressif/mdns component
+├── .cargo/config.toml      # Target riscv32imafc-esp-espidf, ESP-IDF v5.5.3
+├── rust-toolchain.toml     # Rust stable + rust-src
+├── sdkconfig.defaults      # 16MB flash, 32MB Hex PSRAM, EMAC, USB Host Hubs, lwIP
+├── build.rs                # Embuild sysenv + optional cfg.toml loader
+├── cfg.toml.example        # Public template for local device identity
+├── assets/test_scan.jpg    # Fallback test card when no USB printer is attached
+├── src/
+│   ├── main.rs             # Boot orchestration, port-80 Web UI + eSCL + Epson assets
+│   ├── config.rs           # Compile-time config from optional cfg.toml
+│   ├── eth.rs              # ESP32-P4 internal EMAC + IP101GRI RMII bring-up
+│   ├── mdns.rs             # Bonjour (_uscan._tcp, _ipp._tcp + _universal, _http._tcp)
+│   ├── usb_host.rs         # High-Speed USB 2.0 Host + CH334F hub + IPP-USB claiming
+│   ├── ipp_usb.rs          # 4-channel HTTP/1.1-over-USB-Bulk streaming transport
+│   ├── escl.rs             # AirScan (eSCL) proxy + mock fallback
+│   ├── scan_cal.rs         # Hardware eSCL tone XML injection + NVS persistence
+│   ├── ipp_server.rs       # Pure-Rust port-631 HTTP/1.1 AirPrint proxy + URI sanitizer
+│   ├── ipp.rs              # RFC 8010/8011 IPP/2.0 mock fallback
+│   └── backend.rs          # Pluggable ScannerBackend / PrinterBackend traits + mock
+├── README.md               # Human setup & maintenance documentation
+└── AGENTS.md               # Technical invariants & gotchas for AI coding agents
+```

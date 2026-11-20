@@ -1,0 +1,19 @@
+/.vscode
+/.zed
+/.embuild
+/target
+/Cargo.lock
+/components_*.lock
+/sdkconfig
+/sdkconfig.old
+cfg.toml
+.DS_Store
+
+# Prevent accidental commit of local test scans in repo root
+/*.jpg
+/*.jpeg
+/*.png
+/*.tif
+/*.tiff
+/*.dng
+/*.DNG
