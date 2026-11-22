@@ -29,7 +29,7 @@ echo "==> [1/3] Building release firmware..."
 RUSTC_BOOTSTRAP=1 cargo build --release
 
 echo "==> [2/3] Converting ELF -> ESP-IDF OTA binary (${BIN})..."
-espflash save-image --chip esp32p4 --flash-size 16mb "${ELF}" "${BIN}"
+espflash save-image --chip esp32p4 --flash-size 16mb --min-chip-rev 3.1 "${ELF}" "${BIN}"
 ls -lh "${BIN}"
 
 echo "==> [3/3] Uploading OTA firmware to http://${TARGET_HOST}/ota ..."

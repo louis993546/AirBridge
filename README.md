@@ -88,7 +88,7 @@ Once the dual-OTA firmware is on the board, you can leave it tucked behind the p
   ./ota.sh                # builds, converts ELF -> .bin, uploads to http://p4-airbridge.local/ota
   ./ota.sh 192.168.1.153  # or specify an IP directly
   ```
-- **From your browser:** Open **`http://p4-airbridge.local/`** → **Wireless Firmware Update (OTA)**, pick a `.bin` built via `espflash save-image --chip esp32p4 --flash-size 16mb <elf> firmware.bin`, and click **Upload & Reboot**.
+- **From your browser:** Open **`http://p4-airbridge.local/`** → **Wireless Firmware Update (OTA)**, pick a `.bin` built via `espflash save-image --chip esp32p4 --flash-size 16mb --min-chip-rev 3.1 <elf> firmware.bin`, and click **Upload & Reboot**.
 - **Rollback safety:** On boot, the new firmware only calls `esp_ota_mark_app_valid_cancel_rollback()` *after* Wi-Fi or Ethernet obtains an IP. If a broken build crashes or fails to connect, the bootloader automatically rolls back to the previous working slot!
 - **Optional LAN auth:** Set `OTA_TOKEN = "your-secret"` in `cfg.toml` (gitignored); `./ota.sh` reads and sends it automatically via `X-OTA-Token`.
 

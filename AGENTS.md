@@ -33,7 +33,7 @@ This file documents the architecture, build constraints, and hard-won hardware/f
    - To avoid re-downloading ~5 GB of ESP-IDF tools when a local install already exists, pass `ESP_IDF_TOOLS_INSTALL_DIR="custom:<path>/espressif"`.
 3. **mDNS component pin (`Cargo.toml`):** `espressif/mdns` is pinned to `~1.8.2`. Do not blindly bump to `1.*` / `1.15.1` without verifying — `1.15.1` failed IDF component manager integrity check (`README.md` missing).
 4. **ESP32-P4 silicon revision:** ESP-IDF `v5.5.3` defaults to `ESP32P4_REV_MIN_301` (`!ESP32P4_SELECTS_REV_LESS_V3`), matching production v3.x silicon (e.g. rev v3.2). If targeting an older engineering sample (rev v0.x/v1.x), set `CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y` in `sdkconfig.defaults`.
-5. **Custom `partitions.csv` (dual OTA):** Per `esp-idf-sys`, do **NOT** set `CONFIG_PARTITION_TABLE_CUSTOM=y` in `sdkconfig.defaults`; pass `--partition-table partitions.csv` (and `--bootloader <idf_bootloader.bin>` for hardware rollback) to `espflash` via `./flash-usb.sh` or `.cargo/config.toml`. Future wireless updates use `./ota.sh` (`espflash save-image --chip esp32p4 --flash-size 16mb` + `POST /ota`).
+5. **Custom `partitions.csv` (dual OTA):** Per `esp-idf-sys`, do **NOT** set `CONFIG_PARTITION_TABLE_CUSTOM=y` in `sdkconfig.defaults`; pass `--partition-table partitions.csv` (and `--bootloader <idf_bootloader.bin>` for hardware rollback) to `espflash` via `./flash-usb.sh` or `.cargo/config.toml`. Future wireless updates use `./ota.sh` (`espflash save-image --chip esp32p4 --flash-size 16mb --min-chip-rev 3.1` + `POST /ota` — `--min-chip-rev 3.1` is **mandatory** for P4 rev v3.x, otherwise `espflash` writes `max_rev_full=199` and `esp_ota_end` rejects it with `0x1503`!).
 
 ---
 
