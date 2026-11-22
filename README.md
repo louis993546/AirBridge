@@ -37,7 +37,7 @@ Many otherwise great printers/scanners (like Epson EcoTank models) only support 
 - **Native AirPrint (IPP/2.0):** Works driverless with macOS & iOS Print dialogs (registers `_ipp._tcp` + `_universal._sub._ipp._tcp`), streaming print jobs directly from Ethernet to High-Speed USB 2.0.
 - **Epson IPP-USB Firmware Workaround:** Automatically repairs malformed `http://localhost<garbage>/...` URIs emitted by Epson EcoTank IPP-USB firmware that otherwise cause macOS `ipp2ppd` / CUPS to reject the printer.
 - **Hardware eSCL Scan Calibration + Web UI:** Visit `http://p4-airbridge.local/` to tune Brightness, Contrast, Sharpen, and JPEG Quality (`CompressionFactor = 1`) inside the scanner's own 16-bit sensor pipeline — persisted in ESP32-P4 NVS across reboots.
-- **24/7 Headless Operation:** Non-blocking USB-Serial/JTAG console (runs cleanly on a plain 5V USB wall charger), automatic USB disconnect/reconnect recovery when the printer sleeps or power-cycles, stale-channel drain on canceled scans, and a remote **Reboot** button on the Web UI.
+- **24/7 Headless Operation & Wireless OTA Updates:** Non-blocking USB-Serial/JTAG console (runs cleanly on a plain 5V USB wall charger), automatic USB/Wi-Fi recovery, dual 4 MB A/B OTA partitions with **automatic bootloader rollback**, Web UI firmware uploader, and a one-command `./ota.sh` wireless deploy script.
 
 ---
 
@@ -67,19 +67,35 @@ cp cfg.toml.example cfg.toml
 
 If you skip this step, the firmware still builds cleanly with generic placeholders.
 
-### 2. Build & Flash
+### 2. First-Time USB Flash (Dual-OTA Partition Table + Rollback Bootloader)
 
 > **Note on `RUSTC_BOOTSTRAP=1`:** Because `-Z build-std` is used for `riscv32imafc-esp-espidf` while staying on `stable` Rust (avoiding a `nightly` `libc 0.2.191` `st_mtim` breakage on `target_os = "espidf"`), prefix Cargo commands with `RUSTC_BOOTSTRAP=1`.
 
+Flash **once** over USB using `./flash-usb.sh` (installs the 16 MB dual-OTA `partitions.csv` and the ESP-IDF bootloader with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`):
+
 ```bash
-RUSTC_BOOTSTRAP=1 cargo run --release
+./flash-usb.sh
 ```
 
-If you already have ESP-IDF `v5.5.3` + RISC-V tools installed elsewhere (for example in a sibling repo's `.embuild/espressif`), reuse it without re-downloading ~5 GB:
+*(Or manually with `RUSTC_BOOTSTRAP=1 cargo run --release`, which passes `--partition-table partitions.csv` via `.cargo/config.toml`.)*
+
+### 3. Wireless OTA Updates (No USB Cable Needed!)
+
+Once the dual-OTA firmware is on the board, you can leave it tucked behind the printer and update it wirelessly over Wi-Fi or Ethernet:
+
+- **From your terminal (one command):**
+  ```bash
+  ./ota.sh                # builds, converts ELF -> .bin, uploads to http://p4-airbridge.local/ota
+  ./ota.sh 192.168.1.153  # or specify an IP directly
+  ```
+- **From your browser:** Open **`http://p4-airbridge.local/`** → **Wireless Firmware Update (OTA)**, pick a `.bin` built via `espflash save-image --chip esp32p4 --flash-size 16mb <elf> firmware.bin`, and click **Upload & Reboot**.
+- **Rollback safety:** On boot, the new firmware only calls `esp_ota_mark_app_valid_cancel_rollback()` *after* Wi-Fi or Ethernet obtains an IP. If a broken build crashes or fails to connect, the bootloader automatically rolls back to the previous working slot!
+- **Optional LAN auth:** Set `OTA_TOKEN = "your-secret"` in `cfg.toml` (gitignored); `./ota.sh` reads and sends it automatically via `X-OTA-Token`.
+
+If you already have ESP-IDF `v5.5.3` + RISC-V tools installed elsewhere, override the install path without re-downloading ~5 GB:
 
 ```bash
-ESP_IDF_TOOLS_INSTALL_DIR="custom:../hello-new-world/.embuild/espressif" \
-  RUSTC_BOOTSTRAP=1 cargo run --release
+ESP_IDF_TOOLS_INSTALL_DIR="custom:../esp32c6/hello-new-world/.embuild/espressif" ./flash-usb.sh
 ```
 
 ---

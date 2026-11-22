@@ -9,7 +9,8 @@
 cfg.toml
 .DS_Store
 
-# Prevent accidental commit of local test scans in repo root
+# Prevent accidental commit of local test scans or generated OTA images in repo root
+/*.bin
 /*.jpg
 /*.jpeg
 /*.png

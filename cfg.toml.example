@@ -22,3 +22,7 @@ SCANNER_CS = "color,grayscale,binary"
 WIFI_SSID = ""
 WIFI_PASS = ""
 WIFI_COUNTRY = "EU"
+
+# Optional shared secret for wireless OTA firmware updates (`POST /ota`).
+# Leave empty to allow any device on your local LAN to upload firmware.
+OTA_TOKEN = ""
