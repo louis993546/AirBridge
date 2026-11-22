@@ -6,6 +6,7 @@ mod ipp;
 mod ipp_server;
 mod ipp_usb;
 mod mdns;
+mod ota;
 mod scan_cal;
 mod usb_host;
 mod wifi;
@@ -78,18 +79,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Advertise AirScan (_uscan._tcp:80) and AirPrint (_ipp._tcp:631 + _universal) via mDNS
     let _mdns = mdns::start_mdns(scanner_backend.as_ref(), printer_backend.as_ref())?;
 
-    // 6. Start HTTP Server #1 on port 80: Status + Calibration UI + AirScan (eSCL) + Epson Assets
+    // 6. Start HTTP Server #1 on port 80: Status + Calibration UI + OTA + AirScan (eSCL) + Epson Assets
     let mut http_server = EspHttpServer::new(&HttpConfig {
         http_port: mdns::AIRSCAN_PORT,
         ctrl_port: 32768,
         stack_size: 20480,
         max_open_sockets: 5,
-        max_uri_handlers: 22,
+        max_uri_handlers: 24,
         uri_match_wildcard: true,
         ..Default::default()
     })?;
 
     let boot_instant = std::time::Instant::now();
+    let fw_info = ota::running_partition_summary();
+    info!("[OTA] Running firmware: {}", fw_info);
 
     // Status & Scan Calibration dashboard at http://p4-airbridge.local/
     {
@@ -98,6 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let usb = usb_state.clone();
         let ipp_usb_ref = ipp_usb.clone();
         let cal_ref = scan_cal.clone();
+        let fw_info_str = fw_info.clone();
         http_server.fn_handler("/", Method::Get, move |req| {
             let eth_ip = net_state
                 .lock()
@@ -150,6 +154,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cmp1 = if cal.compression_factor == 1 { "selected" } else { "" };
             let cmp2 = if cal.compression_factor == 2 { "selected" } else { "" };
             let cmp3 = if cal.compression_factor == 3 { "selected" } else { "" };
+            let ota_token_input = if !config::OTA_TOKEN.is_empty() {
+                r#"<div class="row"><label for="otatok">OTA Token</label><input type="password" id="otatok" placeholder="Required (from cfg.toml)" style="flex:1;padding:6px"></div>"#
+            } else {
+                r#"<input type="hidden" id="otatok" value="">"#
+            };
 
             let html = format!(
                 r#"<!DOCTYPE html>
@@ -174,6 +183,7 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
   <p>
     <strong>Mode:</strong> {mode}<br>
     <strong>IP:</strong> <code>{ip}</code> (<code>p4-airbridge.local</code>)<br>
+    <strong>Firmware:</strong> <code>{fw}</code><br>
     <strong>Uptime:</strong> {uptime} &nbsp;|&nbsp; <strong>Free RAM:</strong> {ram_kb} KB internal, {psram_kb} KB PSRAM
   </p>
 
@@ -219,6 +229,36 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
     </form>
   </div>
 
+  <div class="card">
+    <h2 style="margin-top:0">Wireless Firmware Update (OTA)</h2>
+    <p style="margin-top:0;font-size:13px;color:#475569">Upload an ESP-IDF <code>.bin</code> image (from <code>espflash save-image</code> or <code>./ota.sh</code>). Automatic bootloader rollback protects against bad builds.</p>
+    <div class="row">
+      <label for="otafile">Firmware (.bin)</label>
+      <input type="file" id="otafile" accept=".bin">
+    </div>
+    {ota_token_input}
+    <button class="btn primary" type="button" onclick="uploadOta()">Upload &amp; Reboot</button>
+    <span id="otastatus" style="margin-left:12px;font-size:13px;font-weight:600"></span>
+    <script>
+    async function uploadOta(){{
+      const f = document.getElementById('otafile').files[0];
+      const st = document.getElementById('otastatus');
+      if(!f){{ st.textContent='Pick a .bin file first.'; return; }}
+      st.textContent='Uploading ' + (f.size/1024).toFixed(0) + ' KB...';
+      try {{
+        const tok = document.getElementById('otatok').value;
+        const headers = tok ? {{'X-OTA-Token': tok}} : {{}};
+        const r = await fetch('/ota', {{method:'POST', headers, body: f}});
+        const txt = await r.text();
+        st.textContent = txt.trim();
+        if(r.ok) setTimeout(() => location.reload(), 9000);
+      }} catch(e) {{
+        st.textContent = 'Upload error: ' + e;
+      }}
+    }}
+    </script>
+  </div>
+
   <h2>Connected USB Devices</h2>
   <pre>{usb_text}</pre>
   <h2>Endpoints &amp; Maintenance</h2>
@@ -233,6 +273,7 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
 </html>"#,
                 mode = mode_str,
                 ip = ip_str,
+                fw = fw_info_str,
                 primary_ip = primary_ip,
                 uptime = uptime_str,
                 ram_kb = free_internal_kb,
@@ -244,6 +285,7 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
                 cmp1 = cmp1,
                 cmp2 = cmp2,
                 cmp3 = cmp3,
+                ota_token_input = ota_token_input,
                 usb_text = usb_text,
             );
             let mut resp = req.into_response(
@@ -255,6 +297,9 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
             Ok::<(), esp_idf_svc::io::EspIOError>(())
         })?;
     }
+
+    // Wireless OTA update endpoint (`POST /ota`)
+    ota::register_routes(&mut http_server)?;
 
     // Remote reboot endpoint for headless operation behind the printer
     http_server.fn_handler("/reboot", Method::Get, move |req| {
@@ -417,7 +462,11 @@ code,pre{{background:#f1f5f9;padding:2px 6px;border-radius:4px;}} pre{{padding:1
     // 7. Dedicated pure-Rust HTTP/1.1 AirPrint IPP server on port 631
     ipp_server::start_ipp_tcp_server(mdns::AIRPRINT_PORT, printer_backend, ipp_usb)?;
 
-    info!("Ready! AirScan & AirPrint bridge active.");
+    // 8. Confirm OTA firmware as valid once Ethernet or Wi-Fi gets an IP
+    // (if a broken update fails to reach the network, bootloader rolls back automatically!)
+    ota::spawn_rollback_confirmation(ethernet.state.clone(), wifi_state.clone());
+
+    info!("Ready! AirScan, AirPrint & OTA bridge active.");
 
     loop {
         thread::sleep(Duration::from_secs(10));

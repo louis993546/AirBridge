@@ -10,6 +10,9 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_HEX=y
 CONFIG_SPIRAM_SPEED_200M=y
 
+# Automatic OTA rollback protection (reverts to previous slot if new firmware fails to boot/connect)
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # Ethernet (ESP32-P4 internal EMAC + IP101GRI RMII PHY)
 CONFIG_ETH_USE_ESP32_EMAC=y
 CONFIG_ETH_PHY_INTERFACE_RMII=y

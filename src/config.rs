@@ -65,3 +65,10 @@ pub const WIFI_COUNTRY: &str = match option_env!("AIRBRIDGE_WIFI_COUNTRY") {
     Some(v) => v,
     None => "EU",
 };
+
+/// Optional shared secret required on `POST /ota` (header `X-OTA-Token` or `?token=...`).
+/// Leave empty in `cfg.toml` to allow unauthenticated LAN OTA updates.
+pub const OTA_TOKEN: &str = match option_env!("AIRBRIDGE_OTA_TOKEN") {
+    Some(v) => v,
+    None => "",
+};
