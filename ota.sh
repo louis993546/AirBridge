@@ -8,17 +8,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Auto-reuse existing sibling ESP-IDF v5.5.3 install if present and not overridden
-if [ -z "${ESP_IDF_TOOLS_INSTALL_DIR:-}" ] && [ -d "../esp32c6/hello-new-world/.embuild/espressif" ]; then
-  export ESP_IDF_TOOLS_INSTALL_DIR="custom:../esp32c6/hello-new-world/.embuild/espressif"
-fi
-
-# Read optional MDNS_HOSTNAME and OTA_TOKEN from local cfg.toml
+# Read optional settings from local gitignored cfg.toml
 CFG_HOST=""
 OTA_TOKEN=""
 if [ -f cfg.toml ]; then
   CFG_HOST=$(awk -F= '/^[[:space:]]*MDNS_HOSTNAME[[:space:]]*=/{gsub(/["[:space:]]/,"",$2); print $2}' cfg.toml || true)
   OTA_TOKEN=$(awk -F= '/^[[:space:]]*OTA_TOKEN[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]]*"?|"?[[:space:]]*$/,""); print}' cfg.toml || true)
+  if [ -z "${ESP_IDF_TOOLS_INSTALL_DIR:-}" ]; then
+    CFG_IDF_DIR=$(awk -F= '/^[[:space:]]*ESP_IDF_TOOLS_INSTALL_DIR[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]]*"?|"?[[:space:]]*$/,""); print}' cfg.toml || true)
+    if [ -n "${CFG_IDF_DIR}" ]; then
+      export ESP_IDF_TOOLS_INSTALL_DIR="${CFG_IDF_DIR}"
+    fi
+  fi
 fi
 
 TARGET_HOST="${1:-${CFG_HOST:-p4-airbridge}.local}"

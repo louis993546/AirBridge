@@ -7,8 +7,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-if [ -z "${ESP_IDF_TOOLS_INSTALL_DIR:-}" ] && [ -d "../esp32c6/hello-new-world/.embuild/espressif" ]; then
-  export ESP_IDF_TOOLS_INSTALL_DIR="custom:../esp32c6/hello-new-world/.embuild/espressif"
+# Optional local ESP-IDF tools directory override from gitignored cfg.toml
+if [ -z "${ESP_IDF_TOOLS_INSTALL_DIR:-}" ] && [ -f cfg.toml ]; then
+  CFG_IDF_DIR=$(awk -F= '/^[[:space:]]*ESP_IDF_TOOLS_INSTALL_DIR[[:space:]]*=/{sub(/^[^=]*=/,""); gsub(/^[[:space:]]*"?|"?[[:space:]]*$/,""); print}' cfg.toml || true)
+  if [ -n "${CFG_IDF_DIR}" ]; then
+    export ESP_IDF_TOOLS_INSTALL_DIR="${CFG_IDF_DIR}"
+  fi
 fi
 
 echo "==> Building release firmware..."

@@ -92,10 +92,11 @@ Once the dual-OTA firmware is on the board, you can leave it tucked behind the p
 - **Rollback safety:** On boot, the new firmware only calls `esp_ota_mark_app_valid_cancel_rollback()` *after* Wi-Fi or Ethernet obtains an IP. If a broken build crashes or fails to connect, the bootloader automatically rolls back to the previous working slot!
 - **Optional LAN auth:** Set `OTA_TOKEN = "your-secret"` in `cfg.toml` (gitignored); `./ota.sh` reads and sends it automatically via `X-OTA-Token`.
 
-If you already have ESP-IDF `v5.5.3` + RISC-V tools installed elsewhere, override the install path without re-downloading ~5 GB:
+If you already have ESP-IDF `v5.5.3` + RISC-V tools installed elsewhere, override the install path without re-downloading ~5 GB (you can also put `ESP_IDF_TOOLS_INSTALL_DIR` in your gitignored `cfg.toml` for `./flash-usb.sh` and `./ota.sh`):
 
 ```bash
-ESP_IDF_TOOLS_INSTALL_DIR="custom:../esp32c6/hello-new-world/.embuild/espressif" ./flash-usb.sh
+ESP_IDF_TOOLS_INSTALL_DIR="global" ./flash-usb.sh
+# or: ESP_IDF_TOOLS_INSTALL_DIR="custom:/path/to/espressif" ./flash-usb.sh
 ```
 
 ---

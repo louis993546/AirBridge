@@ -13,6 +13,6 @@ build-std = ["std", "panic_abort"]
 MCU = "esp32p4"
 ESP_IDF_VERSION = "v5.5.3"
 # Portable default for standalone clones. To reuse an existing ESP-IDF v5.5.3 install without
-# re-downloading ~5 GB, override in your shell:
-#   ESP_IDF_TOOLS_INSTALL_DIR="custom:../hello-new-world/.embuild/espressif"
+# re-downloading ~5 GB, override in your shell (or set ESP_IDF_TOOLS_INSTALL_DIR in cfg.toml for scripts):
+#   ESP_IDF_TOOLS_INSTALL_DIR="global"   # or "custom:/path/to/espressif"
 ESP_IDF_TOOLS_INSTALL_DIR = "workspace"

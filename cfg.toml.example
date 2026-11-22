@@ -26,3 +26,7 @@ WIFI_COUNTRY = "EU"
 # Optional shared secret for wireless OTA firmware updates (`POST /ota`).
 # Leave empty to allow any device on your local LAN to upload firmware.
 OTA_TOKEN = ""
+
+# Optional local ESP-IDF tools path override used by ./flash-usb.sh and ./ota.sh
+# (e.g. "global" or "custom:/path/to/espressif")
+# ESP_IDF_TOOLS_INSTALL_DIR = "global"
